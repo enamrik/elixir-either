@@ -1,101 +1,118 @@
 defmodule ElixirEither.Either do
+  defstruct [:result]
+
   @type e :: any
   @type v :: any
   @type e1 :: any
   @type v1 :: any
   @type u :: any
-  @type either(value, error) :: {:ok, value} | {:error, error}
+  @type t(value, error) :: %__MODULE__{result: {:ok, value}} | %__MODULE__{result: {:error, error}}
 
-  @spec success() :: either(:no_value, v)
+  @spec success() :: __MODULE__.t(:no_value, e)
   def success() do
-    :ok
+    %__MODULE__{result: {:ok, :no_value}}
   end
 
-  @spec success(v) :: either(v, e)
+  @spec success(v) :: __MODULE__.t(v, e)
   def success(value) do
-    {:ok, value}
+    %__MODULE__{result: {:ok, value}}
   end
 
-  @spec failure(e) :: either(:error, e)
+  @spec from_elixir_result(:ok | {:ok, v} | {:error, e}) :: __MODULE__.t(v, e)
+  def from_elixir_result(value) do
+    case value do
+      :ok             -> success()
+      {:ok,    value} -> success(value)
+      {:error, error} -> failure(error)
+    end
+  end
+
+  @spec to_elixir_result(__MODULE__.t(v, e)) :: :ok | {:ok, v} | {:error, e}
+  def to_elixir_result(either) do
+    either
+    |> from_either(
+      success: fn
+        :no_value -> :ok
+        value     -> {:ok, value}
+      end,
+      failure: fn error -> {:error, error} end)
+  end
+
+  @spec failure(e) :: __MODULE__.t(v, e)
   def failure(error) do
-    {:error, error}
+    %__MODULE__{result: {:error, error}}
   end
 
-  @spec map(either(v, e), (v -> v1)) :: either(v1, e)
+  @spec map(__MODULE__.t(v, e), (v -> v1)) :: __MODULE__.t(v1, e)
   def map(either, f) do
     case either do
-      {:ok, value}    -> {:ok, f.(value)}
-      {:error, error} -> {:error, error}
-      _               -> raise_either_error("map", either)
+      %__MODULE__{result: {:ok,    value}} -> success(f.(value))
+      %__MODULE__{result: {:error, error}} -> failure(error)
+      _                                    -> raise_either_error("map", either)
     end
   end
 
-  @spec map_error(either(v, e), (e -> e1)) :: either(v, e1)
+  @spec map_error(__MODULE__.t(v, e), (e -> e1)) :: __MODULE__.t(v, e1)
   def map_error(either, f) do
     case either do
-      {:error, error} -> {:error, f.(error)}
-      {:ok, value}    -> {:ok, value}
-      _               -> raise_either_error("map_error", either)
+      %__MODULE__{result: {:error, error}} -> failure(f.(error))
+      %__MODULE__{result: {:ok,    value}} -> success(value)
+      _                                    -> raise_either_error("map_error", either)
     end
   end
 
-  @doc """
-  ## Examples
-      either = Either.success(1)
-      Either.on(either, success: fn v -> _ end, failure: fn e -> _ end)
-  """
-  @spec on(either(v, e), nonempty_list({:ok, (v -> none())} | {:error, (e -> none())})) :: either(v, e)
+  @spec on(__MODULE__.t(v, e), nonempty_list({:success, (v -> none())} | {:failure, (e -> none())})) :: __MODULE__.t(v, e)
   def on(either, options) do
     success_f = options[:success] || fn x -> x end
     failure_f = options[:failure] || fn x -> x end
 
     case either do
-      {:error, error} -> failure_f.(error)
-      {:ok, value}    -> success_f.(value)
-      _               -> raise_either_error("on", either)
+      %__MODULE__{result: {:error, error}} -> failure_f.(error)
+      %__MODULE__{result: {:ok,    value}} -> success_f.(value)
+      _                                    -> raise_either_error("on", either)
     end
     either
   end
 
-  @spec then(either(v, e), (v -> either(v1, e1))) :: either(v1, e1)
+  @spec then(__MODULE__.t(v, e), (v -> __MODULE__.t(v1, e1))) :: __MODULE__.t(v1, e1)
   def then(either, f) do
     case either do
-      {:ok, value}    ->
+      %__MODULE__{result: {:ok,    value}} ->
         case f.(value) do
-          {:ok, next_value} -> {:ok, next_value}
-          {:error, e}       -> {:error, e}
-          value             -> {:ok, value}
+          %__MODULE__{result: {:ok,    next_value}} -> success(next_value)
+          %__MODULE__{result: {:error, error}}      -> failure(error)
+          value                                     -> success(value)
         end
-      {:error, error} -> {:error, error}
-      _               -> raise_either_error("then", either)
+      %__MODULE__{result: {:error, error}} -> failure(error)
+      _                                    -> raise_either_error("then", either)
     end
   end
 
-  @spec catch_error(either(v, e), (e -> either(v1, e1))) :: either(v1, e1)
+  @spec catch_error(__MODULE__.t(v, e), (e -> __MODULE__.t(v1, e1))) :: __MODULE__.t(v1, e1)
   def catch_error(either, f) do
     case either do
-      {:error, value} ->
-        case f.(value) do
-          {:error, next_value} -> {:error, next_value}
-          {:ok, next_value}    -> {:ok, next_value}
-          value                -> {:ok,      value}
+      %__MODULE__{result: {:error, error}} ->
+        case f.(error) do
+          %__MODULE__{result: {:error, next_error}} -> failure(next_error)
+          %__MODULE__{result: {:ok,    value}}      -> success(value)
+          value                                     -> success(value)
         end
-      {:ok, value}    -> {:ok, value}
-      _               -> raise_either_error("catch_error", either)
+      %__MODULE__{result: {:ok,    value}} -> {:ok, value}
+      _                                    -> raise_either_error("catch_error", either)
     end
   end
 
-  @spec success_or_default(either(v, e), v) :: v
+  @spec success_or_default(__MODULE__.t(v, e), v) :: v
   def success_or_default(either, default) do
     either |> from_either( [{:success, fn value -> value end}, {:failure, fn _     -> default end}] )
   end
 
-  @spec merge_eithers([either(v, e)],
+  @spec merge_eithers([__MODULE__.t(v, e)],
           [{:strategy, :any_succeed_else_fail}]
           | [{:strategy, :success_or, default: v}]
           | [{:strategy, :all_succeed_else_fail}]
             | [{:strategy, :only_successes}]
-        ) :: either(v, e)
+        ) :: __MODULE__.t(v, e)
   def merge_eithers(eithers, options) do
     case options do
       [strategy: :any_succeed_else_fail]              -> eithers |> any_succeed_else_fail
@@ -105,17 +122,17 @@ defmodule ElixirEither.Either do
     end
   end
 
-  @spec from_either(either(v, e), nonempty_list({:ok, (v -> u)} | {:error, (e -> u)})) :: u
+  @spec from_either(__MODULE__.t(v, e), nonempty_list({:success, (v -> u)} | {:failure, (e -> u)})) :: u
   def from_either(either, options) do
     [success: get_f, failure: return_f] = options
     case either do
-      {:ok, value} -> get_f.(value)
-      {:error, error} -> return_f.(error)
-      _                 -> raise_either_error("from_either", either)
+      %__MODULE__{result: {:ok,    value}} -> get_f.(value)
+      %__MODULE__{result: {:error, error}} -> return_f.(error)
+      _                                    -> raise_either_error("from_either", either)
     end
   end
 
-  @spec try_catch((() -> v)) :: either(v, e)
+  @spec try_catch((() -> v)) :: __MODULE__.t(v, e)
   def try_catch(func) do
     try do
       func.() |> success()

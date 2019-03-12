@@ -6,17 +6,17 @@ defmodule ElixirEither.Test.EitherTest do
   describe "Either" do
     test "can ignore map func if failure" do
       value = Either.failure("SomeError")
-      assert Either.map(value, fn x -> x + 1 end) == {:error, "SomeError"}
+      assert Either.map(value, fn x -> x + 1 end) == Either.failure("SomeError")
     end
 
     test "Can transform success" do
       value = Either.success(2)
-      assert Either.map(value, fn x -> x + 1 end) == {:ok, 3}
+      assert Either.map(value, fn x -> x + 1 end) == Either.success(3)
     end
 
     test "Can transform failure" do
       value = Either.failure("error1")
-      assert Either.map_error(value, fn x -> "#{x}-is-bad" end) == {:error, "error1-is-bad"}
+      assert Either.map_error(value, fn x -> "#{x}-is-bad" end) == Either.failure("error1-is-bad")
     end
 
     test "Can chain on failure" do
@@ -24,7 +24,7 @@ defmodule ElixirEither.Test.EitherTest do
       result = value
                |> Either.then(fn x -> Either.success(x + 1) end)
                |> Either.then(fn x -> Either.success(x + 2) end)
-      assert result  == {:error, "SomeError"}
+      assert result == Either.failure("SomeError")
     end
 
     test "Can chain on success" do
@@ -32,7 +32,7 @@ defmodule ElixirEither.Test.EitherTest do
       result = value
                |> Either.then(fn x -> Either.success(x + 1) end)
                |> Either.then(fn x -> Either.success(x + 2) end)
-      assert result  == {:ok, 5}
+      assert result  ==  Either.success(5)
     end
 
     test "catch_error: Should throw error if not a valid either" do
@@ -140,7 +140,7 @@ defmodule ElixirEither.Test.EitherTest do
 
       result = [value1, value2, value3] |> Either.merge_eithers(strategy: :any_succeed_else_fail)
 
-      assert {:ok, [1, 2]} = result
+      assert result == Either.success([1, 2])
     end
 
     test "If any succeed strategy, will fail if no eithers successful" do
@@ -150,7 +150,7 @@ defmodule ElixirEither.Test.EitherTest do
 
       result = [value1, value2, value3] |> Either.merge_eithers(strategy: :any_succeed_else_fail)
 
-      assert {:error, ["Some Error1", "Some Error2", "Some Error3"]} = result
+      assert result == Either.failure(["Some Error1", "Some Error2", "Some Error3"])
     end
 
     test "If all succeed strategy, will merge results from mulitple eithers into a single either if all successful" do
@@ -160,7 +160,7 @@ defmodule ElixirEither.Test.EitherTest do
 
       result = [value1, value2, value3] |> Either.merge_eithers(strategy: :all_succeed_else_fail)
 
-      assert {:ok, [1, 2, 3]} = result
+      assert result == Either.success([1, 2, 3])
     end
 
     test "If all succeed strategy, will fail if any eithers fail" do
@@ -170,7 +170,7 @@ defmodule ElixirEither.Test.EitherTest do
 
       result = [value1, value2, value3] |> Either.merge_eithers(strategy: :all_succeed_else_fail)
 
-      assert {:error, ["Some Error2", "Some Error3"]} = result
+      assert result == Either.failure(["Some Error2", "Some Error3"])
     end
 
     test "If success or default strategy, will merge results from mulitple eithers into a single either and turn failures into success with default" do
@@ -181,7 +181,7 @@ defmodule ElixirEither.Test.EitherTest do
 
       result = [value1, value2, value3, value4] |> Either.merge_eithers(strategy: :success_or, default: 10)
 
-      assert {:ok, [1, 2, 10, 10]} = result
+      assert result == Either.success([1, 2, 10, 10])
     end
 
     test "If only successes strategy, will merge results from mulitple eithers into a single either ignoring all failures" do
@@ -191,10 +191,10 @@ defmodule ElixirEither.Test.EitherTest do
       value4 = Either.failure("Some Error")
 
       result = [value1, value2, value3, value4] |> Either.merge_eithers(strategy: :only_successes)
-      assert {:ok, [1, 2]} = result
+      assert result == Either.success([1, 2])
 
       result = [value3, value4] |> Either.merge_eithers(strategy: :only_successes)
-      assert {:ok, []} = result
+      assert result == Either.success([])
     end
 
     test "Can return success or default" do
@@ -269,6 +269,18 @@ defmodule ElixirEither.Test.EitherTest do
       action = fn-> raise error end
       result = Either.try_catch(action)
       assert result == Either.failure(%RuntimeError{message: "SomeError"})
+    end
+
+    test "to_elixir_result: will convert either to elixir system result format" do
+      assert Either.success(3) |> Either.to_elixir_result == {:ok, 3}
+      assert Either.success() |> Either.to_elixir_result == :ok
+      assert Either.failure("SomeError") |> Either.to_elixir_result == {:error, "SomeError"}
+    end
+
+    test "from_elixir_result: will convert elixir system result format to either" do
+      assert Either.from_elixir_result({:ok, 3}) == Either.success(3)
+      assert Either.from_elixir_result(:ok) == Either.success()
+      assert Either.from_elixir_result({:error, "SomeError"}) == Either.failure("SomeError")
     end
   end
 end
