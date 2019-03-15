@@ -28,8 +28,10 @@ defmodule ElixirEither.TaskEx do
   defp result_to_either(result) do
     case result do
       {:ok, nested_result} -> case nested_result do
-                                %Either{} -> nested_result
-                                _         -> Either.success(nested_result)
+                                :ok             -> Either.success()
+                                {:ok, value}    -> Either.success(value)
+                                {:error, error} -> Either.failure(error)
+                                _               -> Either.success(nested_result)
                               end
       {:exit,      reason} -> Either.failure(reason)
       nil                  -> Either.failure("Task timeout reach but task still going")

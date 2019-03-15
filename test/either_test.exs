@@ -270,17 +270,5 @@ defmodule ElixirEither.Test.EitherTest do
       result = Either.try_catch(action)
       assert result == Either.failure(%RuntimeError{message: "SomeError"})
     end
-
-    test "to_elixir_result: will convert either to elixir system result format" do
-      assert Either.success(3) |> Either.to_elixir_result == {:ok, 3}
-      assert Either.success() |> Either.to_elixir_result == :ok
-      assert Either.failure("SomeError") |> Either.to_elixir_result == {:error, "SomeError"}
-    end
-
-    test "from_elixir_result: will convert elixir system result format to either" do
-      assert Either.from_elixir_result({:ok, 3}) == Either.success(3)
-      assert Either.from_elixir_result(:ok) == Either.success()
-      assert Either.from_elixir_result({:error, "SomeError"}) == Either.failure("SomeError")
-    end
   end
 end
