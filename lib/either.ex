@@ -57,7 +57,7 @@ defmodule ElixirEither.Either do
     either
   end
 
-  @spec then(__MODULE__.either(v, e), (v -> __MODULE__.either(v1, e1))) :: __MODULE__.either(v1, e1)
+  @spec then(__MODULE__.either(v, e), (v -> __MODULE__.either(v1, e1) | any)) :: __MODULE__.either(v1, e1)
   def then(either, f) do
     call_func = fn value ->
       case f.(value) do
